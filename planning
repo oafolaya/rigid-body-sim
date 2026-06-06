@@ -1,0 +1,16 @@
+Simulation - governs simulation flow, coordinates bodies, forces, controllers etc
+
+Integrator - translates force inputs and updates positional states
+
+Kinematics/Contraints - determines how rigid bodies can move in the simulation
+
+DynamicalSystem - Generates the aggregate force, same as state space model
+
+Controller - applies control input that contributes to forward update of state
+
+Renderer - takes positional states of rigid bodies and outputs them to viewer at certain rate
+
+Logger - outputs data, timestamps for visualization, debugging , etc
+
+
+Its easier to do finger as its own think to start, but more flexiblity if I try doing force and links and joints insteaed.
