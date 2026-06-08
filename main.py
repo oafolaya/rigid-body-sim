@@ -202,7 +202,10 @@ class Renderer():
         for o in self.object_list:
             if isinstance(o, PointMass):
                 pos = self.project_orthographic(o.get_position())
+                if o.target_position is not None:
+                    target_pos = self.project_orthographic(o.target_position)
                 pygame.draw.circle(self.screen, "black", pos, radius = o.radius)
+                pygame.draw.circle(self.screen, "red", target_pos, radius = o.radius)
 
     def project_orthographic(self, point, scale=50):
         x = point[0]
@@ -229,12 +232,14 @@ class PIDController(Controller):
         self.D = D
         self.integral = 0
         self.targets = None
+        self.last_error = 0
 
     def compute_control(self, state, reference, t, dt):
         error = reference - state
-        derivative = (error / dt) 
+        derivative = (error - self.last_error) / dt 
         self.integral += error * dt
         control = self.P * error + self.I * self.integral + self.D * derivative
+        self.last_error = error
         return control
     
     def add_target(self, object):
@@ -256,12 +261,13 @@ class EulerIntegrator(Integrator):
 
         
 class Simulation():
-    def __init__(self, width=1280, height=720, integrator = EulerIntegrator(), scale=50):
+    def __init__(self, width=1280, height=720, integrator = EulerIntegrator(), scale=50, gravity_on = True):
         pygame.init()
         self.screen = pygame.display.set_mode((width, height))
         self.clock = pygame.time.Clock()
         self.object_list = []
         self.renderer = Renderer(self.screen, self.object_list)
+        self.gravity_on = gravity_on
         self.gravity = np.array([0, -9.81, 0])
         self.integrator = integrator
         self.controller_list = []
@@ -283,6 +289,12 @@ class Simulation():
     def set_scale(self, scale):
         # Scale converts world units to pixels
         self.scale = scale 
+    
+    def toggle_gravity(self):
+        if self.gravity_on == True:
+            self.gravity_on = False
+        else:
+            self.gravity_on = True
 
     def compute_control(self, dt):
         for c in self.controller_list:
@@ -308,8 +320,9 @@ class Simulation():
     
     def apply_world_forces(self):
         for o in self.object_list:
-            gravitational_force = self.gravity * o.mass
-            o.add_force(gravitational_force)
+            if self.gravity_on == True:
+                gravitational_force = self.gravity * o.mass
+                o.add_force(gravitational_force)
         
         # need to add collision system or something
     
@@ -400,14 +413,15 @@ class Finger():
 
 
 def main():
-    pm = PointMass(mass=20, position=[0, 0, 0])
+    pm = PointMass(mass=10, position=[0, 0, 0])
     pm.set_target_position([2, 2, 1])
-    pid = PIDController(P = 5, I = 0.0, D=0.0)
+    pid = PIDController(P = 0.8, I = 0.0, D=0.4)
     pid.add_target(pm)
 
     s = Simulation()
     s.add_object(pm)
     s.add_controller(pid)
+    s.toggle_gravity()
     s.run()
 
   
