@@ -12,7 +12,7 @@ dt = 0
 # lego type API
 
 class PointMass():
-    def __init__(self, mass=10, position = [0, 0, 0], velocity = [0, 0, 0]):
+    def __init__(self, mass=10, position = [0, 0, 0], velocity = [0, 0, 0], restitution = 0.6, radius = 5):
         self.mass = mass 
         self.x_position = position[0]
         self.y_position = position[1]
@@ -22,6 +22,8 @@ class PointMass():
         self.z_velocity = velocity[2]
         self.accumulated_force = np.array([0, 0, 0])
         self.target_position = None
+        self.restitution = restitution
+        self.radius = radius
 
     def get_state(self): # form state vector
         state = np.array([self.x_position, 
@@ -76,13 +78,18 @@ class PointMass():
 
     def set_target_position(self, target_position):
         self.target_position = target_position
+    
+    def set_restitution(self, restitution):
+        self.restitution = restitution
 
+    def set_radius(self, radius):
+        self.radius = radius
         
     
 class RigidBody():
     def __init__(self, mass=10,moment_of_inertia=10, position = [0, 0, 0],
                 velocity = [0, 0, 0], angular_position = [0,0,0],
-                angular_velocity = [0, 0, 0]):
+                angular_velocity = [0, 0, 0], restitution = 0.6):
         self.accumulated_force = np.array([0, 0, 0])
         self.accumulated_torque = np.array([0, 0, 0])
         self.mass = mass
@@ -101,6 +108,7 @@ class RigidBody():
         self.moment_of_inertia = moment_of_inertia
         self.target_position = None
         self.target_angular_position = None
+        self.restitution = restitution
 
 
     def get_state(self): # form state vector
@@ -182,6 +190,9 @@ class RigidBody():
     def set_target_position(self, target_position):
         self.target_position = target_position
     
+    def set_restitution(self, restitution):
+        self.restitution = restitution
+    
 class Renderer():
     def __init__(self, screen, object_list):
         self.screen = screen
@@ -191,7 +202,7 @@ class Renderer():
         for o in self.object_list:
             if isinstance(o, PointMass):
                 pos = self.project_orthographic(o.get_position())
-                pygame.draw.circle(self.screen, "black", pos, radius=5)
+                pygame.draw.circle(self.screen, "black", pos, radius = o.radius)
 
     def project_orthographic(self, point, scale=50):
         x = point[0]
@@ -199,7 +210,7 @@ class Renderer():
         z = point[2]
 
         x_hat = x * scale + screen.get_width() / 2
-        y_hat = y * scale + screen.get_height() / 2
+        y_hat = screen.get_height() / 2 - y * scale
 
         return int(x_hat), int (y_hat)
 
@@ -245,19 +256,34 @@ class EulerIntegrator(Integrator):
 
         
 class Simulation():
-    def __init__(self, width=1280, height=720, integrator = EulerIntegrator()):
+    def __init__(self, width=1280, height=720, integrator = EulerIntegrator(), scale=50):
         pygame.init()
         self.screen = pygame.display.set_mode((width, height))
         self.clock = pygame.time.Clock()
         self.object_list = []
         self.renderer = Renderer(self.screen, self.object_list)
-        self.world_origin = np.array([width/2, height/2, 0])
-        self.screen_origin = np.array([self.world_origin[:-1]])
-        self.gravity = np.array([0, 9.81, 0])
+        self.gravity = np.array([0, -9.81, 0])
         self.integrator = integrator
         self.controller_list = []
         self.t = 0
+        self.scale = scale
+        self.x_boundary = [-screen.get_width()/(2*self.scale), screen.get_width()/(2 * self.scale)]
+        self.y_boundary = [-screen.get_height()/(2*self.scale), screen.get_height()/(2 * self.scale)]
     
+    def world_to_screen_position(self, position):
+        x = position.item(0)
+        y = position.item(1)
+        z = position.item(2) # Z should influence x_screen and y_screen (will do once camera object implemented)
+
+        x_screen = x*self.scale + (self.screen.get_width()/2) 
+        y_screen = y*self.scale + (self.screen.get_height()/2) 
+
+        return x_screen, y_screen
+
+    def set_scale(self, scale):
+        # Scale converts world units to pixels
+        self.scale = scale 
+
     def compute_control(self, dt):
         for c in self.controller_list:
             for o in c.targets:
@@ -306,6 +332,27 @@ class Simulation():
                 new_angular_position = self.integrator.step(angular_position, angular_velocity, dt)
                 o.set_angular_velocity(new_angular_velocity)
                 o.set_angular_position(new_angular_position)
+    
+    def handle_collisions(self):
+        for o in self.object_list:
+            position = o.get_position()
+            if isinstance(o, PointMass):
+                radius_world = o.radius / self.scale
+                if (position.item(0) - radius_world) <= self.x_boundary[0]:
+                    o.x_velocity = o.x_velocity * -o.restitution
+                    o.x_position = self.x_boundary[0] + radius_world
+                
+                if (position.item(0) + radius_world) >= self.x_boundary[1]:
+                    o.x_velocity = o.x_velocity * -o.restitution
+                    o.x_position = self.x_boundary[1] - radius_world
+                
+                if (position.item(1) - radius_world) <= self.y_boundary[0]:
+                    o.y_velocity = o.y_velocity * -o.restitution
+                    o.y_position = self.y_boundary[0] + radius_world
+                
+                if (position.item(1) + radius_world) >= self.y_boundary[1]:
+                    o.y_velocity = o.y_velocity * -o.restitution
+                    o.y_position = self.y_boundary[1] - radius_world
 
     def run(self):
         done = False
@@ -324,6 +371,7 @@ class Simulation():
             self.apply_world_forces()
             self.compute_control(dt)
             self.integrate(dt)
+            self.handle_collisions()
             self.renderer.render()
 
             self.t += dt
