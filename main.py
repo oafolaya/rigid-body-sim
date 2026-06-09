@@ -2,17 +2,12 @@ from abc import ABC, abstractmethod
 import numpy as np
 import pygame 
 
-pygame.init()
-screen = pygame.display.set_mode((1280, 720))
-clock = pygame.time.Clock()
-running = True
-dt = 0
 
 # would be cool if i could just make joints a class and do some sort of
 # lego type API
 
 class PointMass():
-    def __init__(self, mass=10, position = [0, 0, 0], velocity = [0, 0, 0], restitution = 0.6, radius = 5):
+    def __init__(self, mass=10.0, position = [0.0, 0.0, 0.0], velocity = [0.0, 0.0, 0.0], restitution = 0.6, radius = 5):
         self.mass = mass 
         self.x_position = position[0]
         self.y_position = position[1]
@@ -20,11 +15,11 @@ class PointMass():
         self.x_velocity = velocity[0]
         self.y_velocity = velocity[1]
         self.z_velocity = velocity[2]
-        self.accumulated_force = np.array([0, 0, 0])
+        self.accumulated_force = np.array([0.0, 0.0, 0.0])
         self.target_position = None
         self.restitution = restitution
         self.radius = radius
-
+        
     def get_state(self): # form state vector
         state = np.array([self.x_position, 
                         self.y_position, 
@@ -194,9 +189,10 @@ class RigidBody():
         self.restitution = restitution
     
 class Renderer():
-    def __init__(self, screen, object_list):
+    def __init__(self, screen, object_list, constraint_list):
         self.screen = screen
         self.object_list = object_list
+        self.constraint_list = constraint_list
 
     def render(self):
         for o in self.object_list:
@@ -206,19 +202,93 @@ class Renderer():
                     target_pos = self.project_orthographic(o.target_position)
                 pygame.draw.circle(self.screen, "black", pos, radius = o.radius)
                 pygame.draw.circle(self.screen, "red", target_pos, radius = o.radius)
+        for c in self.constraint_list:
+            if isinstance(c, DistanceConstraint):
+                p1 = self.project_orthographic(c.obj1.get_position())
+                p2 = self.project_orthographic(c.obj2.get_position())
+                
+                pygame.draw.line(self.screen, "black", start_pos=p1, end_pos=p2, width=2)
 
     def project_orthographic(self, point, scale=50):
         x = point[0]
         y = point[1]
         z = point[2]
 
-        x_hat = x * scale + screen.get_width() / 2
-        y_hat = screen.get_height() / 2 - y * scale
+        x_hat = x * scale + self.screen.get_width() / 2
+        y_hat = self.screen.get_height() / 2 - y * scale
 
         return int(x_hat), int (y_hat)
 
 
+class Constraint(ABC):
+    @abstractmethod
+    def compute_jacobian(self):
+        pass
 
+    @abstractmethod
+    def solve(self, baumgarte, dt):
+        pass
+
+class DistanceConstraint(Constraint):
+    def __init__(self, obj1, obj2, distance):
+        self.obj1 = obj1
+        self.obj2 = obj2
+        self.distance = distance
+        
+    def compute_jacobian(self):
+        p1 = self.obj1.get_position()
+        p2 = self.obj2.get_position()
+        n = (p2 - p1) / np.linalg.norm(p2-p1)
+        print(np.linalg.norm(p2-p1))
+        J = np.array([-n.item(0),-n.item(1), -n.item(2), n.item(0), n.item(1), n.item(2)]).ravel()
+        return J
+    
+    def solve(self, baumgarte=0.1, dt=1.0):
+        p1 = self.obj1.get_position()
+        p2 = self.obj2.get_position()
+        C = np.linalg.norm(p2-p1) - self.distance
+        J = self.compute_jacobian()
+        v1 = self.obj1.get_velocity()
+        v2 = self.obj2.get_velocity()
+        V = np.array([v1.item(0), v1.item(1), v1.item(2), v2.item(0), v2.item(1), v2.item(2)])
+        m1 = float(self.obj1.mass)
+        m2 = float(self.obj2.mass)
+        M =  np.array([[m1, 0, 0, 0, 0, 0],
+                      [0, m1, 0, 0, 0, 0],
+                      [0, 0, m1, 0, 0, 0],
+                      [0, 0, 0, m2, 0, 0],
+                      [0, 0, 0, 0, m2, 0],
+                      [0, 0, 0, 0, 0, m2]])
+        
+        Minv =  np.array([[1/m1, 0, 0, 0, 0, 0],
+                      [0, 1/m1, 0, 0, 0, 0],
+                      [0, 0, 1/m1, 0, 0, 0],
+                      [0, 0, 0, 1/m2, 0, 0],
+                      [0, 0, 0, 0, 1/m2, 0],
+                      [0, 0, 0, 0, 0, 1/m2]])
+        
+        lmda = -(1/((J @ np.linalg.inv(M)) @ J.T)) * ((J.T @ V) + baumgarte*C/dt)
+        impulse = J.T * lmda
+        V = V + Minv @ impulse
+        newv1 = V[0:3]
+        newv2 = V[3:6]
+        self.obj1.set_velocity(newv1)
+        self.obj2.set_velocity(newv2)
+    
+    def initialize_constraint(self):
+        p1 = self.obj1.get_position()
+        p2 = self.obj2.get_position()
+        init_distance = np.linalg.norm(p2-p1)
+        if init_distance != 0:
+            normal_dir = (p2 - p1) / init_distance
+            p2 = p1 + normal_dir*self.distance
+            self.obj2.set_position(p2)
+        else:
+            new_p2 = np.array([p1.item(0)+5, p1.item(1), p1.item(2)])
+            self.obj2.set_position(new_p2)
+        
+
+    
 
 class Controller(ABC):
     @abstractmethod
@@ -266,15 +336,17 @@ class Simulation():
         self.screen = pygame.display.set_mode((width, height))
         self.clock = pygame.time.Clock()
         self.object_list = []
-        self.renderer = Renderer(self.screen, self.object_list)
+        self.constraint_list = []
+        self.renderer = Renderer(self.screen, self.object_list, self.constraint_list)
         self.gravity_on = gravity_on
         self.gravity = np.array([0, -9.81, 0])
         self.integrator = integrator
         self.controller_list = []
         self.t = 0
+        self.dt = None
         self.scale = scale
-        self.x_boundary = [-screen.get_width()/(2*self.scale), screen.get_width()/(2 * self.scale)]
-        self.y_boundary = [-screen.get_height()/(2*self.scale), screen.get_height()/(2 * self.scale)]
+        self.x_boundary = [-self.screen.get_width()/(2*self.scale), self.screen.get_width()/(2 * self.scale)]
+        self.y_boundary = [-self.screen.get_height()/(2*self.scale), self.screen.get_height()/(2 * self.scale)]
     
     def world_to_screen_position(self, position):
         x = position.item(0)
@@ -366,38 +438,52 @@ class Simulation():
                 if (position.item(1) + radius_world) >= self.y_boundary[1]:
                     o.y_velocity = o.y_velocity * -o.restitution
                     o.y_position = self.y_boundary[1] - radius_world
+    
+    def handle_constraints(self, iterations=5):
+        for c in self.constraint_list:
+            for i in range(iterations):
+                c.solve(dt=self.dt)
 
     def run(self):
         done = False
         self.t = 0
+
+        self.initialize_constraints()
+
         while not done:
-            dt = clock.tick(60) / 1000
+            self.dt = self.clock.tick(60) / 1000
             
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     done = True
-            screen.fill("white")
+            self.screen.fill("white")
             
-            
-
             self.clear_forces()
             self.apply_world_forces()
-            self.compute_control(dt)
-            self.integrate(dt)
+            self.compute_control(self.dt)
+            self.integrate(self.dt)
             self.handle_collisions()
+            self.handle_constraints()
             self.renderer.render()
 
-            self.t += dt
-            print(self.t)
+            self.t += self.dt
+            #print(self.t)
             pygame.display.flip()
 
         pygame.quit()
     
+    def initialize_constraints(self):
+        for c in self.constraint_list:
+            c.initialize_constraint()
+
     def add_object(self, object):
         self.object_list.append(object)
     
     def add_controller(self, controller):
         self.controller_list.append(controller)
+    
+    def add_constraint(self, constraint):
+        self.constraint_list.append(constraint)
 
         
 
@@ -413,15 +499,22 @@ class Finger():
 
 
 def main():
-    pm = PointMass(mass=10, position=[0, 0, 0])
+    pm = PointMass(mass=0.1, position=[1.0, 1.0, 0.0])
+    pm2 = PointMass(mass=10.0)
+    pm3 = PointMass(mass=5.0, position=[-1.5, 0, 0.0])
     pm.set_target_position([2, 2, 1])
     pid = PIDController(P = 0.8, I = 0.0, D=0.4)
     pid.add_target(pm)
+    dc = DistanceConstraint(pm, pm2, 5)
+    dc1 = DistanceConstraint(pm2,pm3, 5)
 
     s = Simulation()
     s.add_object(pm)
-    s.add_controller(pid)
-    s.toggle_gravity()
+    s.add_object(pm2)
+    s.add_object(pm3)
+    #s.add_controller(pid)
+    s.add_constraint(dc)
+    s.add_constraint(dc1)
     s.run()
 
   
