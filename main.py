@@ -229,6 +229,35 @@ class Constraint(ABC):
     def solve(self, baumgarte, dt):
         pass
 
+class FixedPointConstraint(Constraint):
+    def __init__(self, obj, fixed_point):
+        self.obj = obj
+        self.fixed_point = fixed_point
+    
+    def compute_jacobian(self):
+        J = np.identity(3)
+        return J
+    
+    def solve(self, baumgarte=0.1, dt =1.0):
+        J = self.compute_jacobian()
+        p = self.obj.get_position()
+        v = self.obj.get_velocity()
+        C = p - self.fixed_point
+        m = self.obj.mass   
+        M = np.array([[m, 0, 0],
+                    [0, m, 0],
+                    [0, 0, m]])
+        A = J @ np.linalg.inv(M) @ J.T
+        B = J @ v + baumgarte*C/dt
+        lmda = -np.linalg.inv(A) @ B
+        impulse = J.T @ lmda
+        new_v = v + np.linalg.inv(M) @ impulse
+        self.obj.set_velocity(new_v)
+    
+    def initialize_constraint(self):
+        self.obj.set_position(np.array(self.fixed_point))
+
+
 class DistanceConstraint(Constraint):
     def __init__(self, obj1, obj2, distance):
         self.obj1 = obj1
@@ -501,19 +530,21 @@ class Finger():
 def main():
     pm = PointMass(mass=0.1, position=[1.0, 1.0, 0.0])
     pm2 = PointMass(mass=10.0)
-    pm3 = PointMass(mass=5.0, position=[-1.5, 0, 0.0])
+    pm3 = PointMass(mass=5.0, position=[-1.5, 0.0, 0.0])
     pm.set_target_position([2, 2, 1])
-    pid = PIDController(P = 0.8, I = 0.0, D=0.4)
+    pid = PIDController(P = 0.8, I = 0.2, D=0.4)
     pid.add_target(pm)
     dc = DistanceConstraint(pm, pm2, 5)
     dc1 = DistanceConstraint(pm2,pm3, 5)
+    f1 = FixedPointConstraint(pm3,[-1.5,0.0, 0.0])
 
     s = Simulation()
     s.add_object(pm)
     s.add_object(pm2)
     s.add_object(pm3)
-    #s.add_controller(pid)
+    s.add_controller(pid)
     s.add_constraint(dc)
+    s.add_constraint(f1)
     s.add_constraint(dc1)
     s.run()
 
