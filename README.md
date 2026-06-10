@@ -1,8 +1,8 @@
 # Simple Controls/Physics Simulation Framework in Pygame and Numpy
 Simple Controls/Physics Simulation Framework in Python, Pygame, and Numpy.
 
-The goal of this project is to build a modular physics simulation tool for experimenting with dynamics, contraints, and controllers. I am implementing the core simulation components from scratch to better understand constraint solving and articulated dynamics. Ideally, it becomes a platform where I can test modern control techniques on rigid-bodies while learning the ins and outs of physical modeling, constraint handling, dynamics.
-git .
+The goal of this project is to build a modular physics simulation tool for experimenting with dynamics, contraints, and controllers. I am implementing the core simulation components from scratch to better understand constraint solving and articulated dynamics. Ideally, it becomes a platform where I can test modern control techniques on rigid-bodies while learning the ins and outs of physical modeling, constraint handling, and dynamics.
+
 ## Progress
 So far, I have implemented the following:
 - Point Mass Object
