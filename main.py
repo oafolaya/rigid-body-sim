@@ -528,24 +528,8 @@ class Finger():
 
 
 def main():
-    pm = PointMass(mass=0.1, position=[1.0, 1.0, 0.0])
-    pm2 = PointMass(mass=10.0)
-    pm3 = PointMass(mass=5.0, position=[-1.5, 0.0, 0.0])
-    pm.set_target_position([2, 2, 1])
-    pid = PIDController(P = 0.8, I = 0.2, D=0.4)
-    pid.add_target(pm)
-    dc = DistanceConstraint(pm, pm2, 5)
-    dc1 = DistanceConstraint(pm2,pm3, 5)
-    f1 = FixedPointConstraint(pm3,[-1.5,0.0, 0.0])
 
     s = Simulation()
-    s.add_object(pm)
-    s.add_object(pm2)
-    s.add_object(pm3)
-    s.add_controller(pid)
-    s.add_constraint(dc)
-    s.add_constraint(f1)
-    s.add_constraint(dc1)
     s.run()
 
   
