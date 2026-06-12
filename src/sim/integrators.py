@@ -9,3 +9,4 @@ class EulerIntegrator(Integrator):
     def step(self, x, xdot, dt):
         x = x + xdot * dt
         return x
+

@@ -3,19 +3,21 @@ from sim.constraints import DistanceConstraint
 from sim.objects import PointMass
 
 class Renderer():
-    def __init__(self, screen, object_list, constraint_list):
+    def __init__(self, screen, object_list, constraint_list, scale):
         self.screen = screen
         self.object_list = object_list
         self.constraint_list = constraint_list
+        self.scale = scale
 
     def render(self):
         for o in self.object_list:
             if isinstance(o, PointMass):
                 pos = self.project_orthographic(o.get_position())
+                render_radius = self.world_to_screen(self.scale,o.radius)
                 if o.target_position is not None:
                     target_pos = self.project_orthographic(o.target_position)
-                    pygame.draw.circle(self.screen, "red", target_pos, radius = o.radius)
-                pygame.draw.circle(self.screen, "black", pos, radius = o.radius)
+                    pygame.draw.circle(self.screen, "red", target_pos, radius = render_radius)
+                pygame.draw.circle(self.screen, "black", pos, radius = render_radius)
                 
         for c in self.constraint_list:
             if isinstance(c, DistanceConstraint):
@@ -23,6 +25,11 @@ class Renderer():
                 p2 = self.project_orthographic(c.obj2.get_position())
                 
                 pygame.draw.line(self.screen, "black", start_pos=p1, end_pos=p2, width=2)
+
+    def world_to_screen(self, scale, value):
+        scale = float(scale)
+        value = float(value)
+        return value * scale
 
     def project_orthographic(self, point, scale=50):
         x = point[0]

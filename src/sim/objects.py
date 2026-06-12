@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 
 class PointMass():
-    def __init__(self, mass=10.0, position = [0.0, 0.0, 0.0], velocity = [0.0, 0.0, 0.0], restitution = 0.6, radius = 5):
+    def __init__(self, mass=10.0, position = [0.0, 0.0, 0.0], velocity = [0.0, 0.0, 0.0], restitution = 0.6, radius = .1):
         self.mass = mass 
         self.x_position = position[0]
         self.y_position = position[1]

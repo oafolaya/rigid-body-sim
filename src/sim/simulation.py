@@ -3,6 +3,7 @@ import numpy as np
 from sim.rendering import Renderer
 from sim.integrators import EulerIntegrator
 from sim.objects import PointMass, RigidBody
+from sim.constraints import StaticPlane
 
 
 class Simulation():
@@ -12,7 +13,8 @@ class Simulation():
         self.clock = pygame.time.Clock()
         self.object_list = []
         self.constraint_list = []
-        self.renderer = Renderer(self.screen, self.object_list, self.constraint_list)
+        self.static_plane_list = []
+        self.renderer = Renderer(self.screen, self.object_list, self.constraint_list, scale)
         self.gravity_on = gravity_on
         self.gravity = np.array([0, -9.81, 0])
         self.integrator = integrator
@@ -93,8 +95,12 @@ class Simulation():
                 o.set_angular_velocity(new_angular_velocity)
                 o.set_angular_position(new_angular_position)
     
-    def handle_collisions(self):
+    def handle_collisions(self, dt):
         for o in self.object_list:
+            for c in self.static_plane_list:
+                c.set_object(o)
+                c.solve(dt = self.dt)
+            """
             position = o.get_position()
             if isinstance(o, PointMass):
                 radius_world = o.radius / self.scale
@@ -113,17 +119,28 @@ class Simulation():
                 if (position.item(1) + radius_world) >= self.y_boundary[1]:
                     o.y_velocity = o.y_velocity * -o.restitution
                     o.y_position = self.y_boundary[1] - radius_world
-    
+            """
     def handle_constraints(self, iterations=5):
         for c in self.constraint_list:
             for i in range(iterations):
                 c.solve(dt=self.dt)
-     
+    
+    def initialize_static_planes(self):
+        left   = StaticPlane([1, 0, 0],  [self.x_boundary[0], 0, 0], scale=self.scale)
+        right  = StaticPlane([-1, 0, 0], [self.x_boundary[1], 0, 0], scale=self.scale)
+        bottom = StaticPlane([0, 1, 0],  [0, self.y_boundary[0], 0], scale=self.scale)
+        top    = StaticPlane([0, -1, 0], [0, self.y_boundary[1], 0], scale=self.scale)
+        self.static_plane_list.append(left)
+        self.static_plane_list.append(right)
+        self.static_plane_list.append(bottom)
+        self.static_plane_list.append(top)
+        
 
     def run(self):
         done = False
         self.t = 0
 
+        self.initialize_static_planes()
         self.initialize_constraints()
 
         while not done:
@@ -139,7 +156,7 @@ class Simulation():
             self.compute_control(self.dt)
             self.integrate(self.dt)
             self.clear_forces()
-            self.handle_collisions()
+            self.handle_collisions(dt= self.dt)
             self.handle_constraints()
             self.renderer.render()
 

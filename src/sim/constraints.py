@@ -28,8 +28,9 @@ class FixedPointConstraint(Constraint):
         M = np.array([[m, 0, 0],
                     [0, m, 0],
                     [0, 0, m]])
+        b = baumgarte*C/dt
         A = J @ np.linalg.inv(M) @ J.T
-        B = J @ v + baumgarte*C/dt
+        B = J @ v + b
         lmda = -np.linalg.inv(A) @ B
         impulse = J.T @ lmda
         new_v = v + np.linalg.inv(M) @ impulse
@@ -52,7 +53,7 @@ class DistanceConstraint(Constraint):
         J = np.array([-n.item(0),-n.item(1), -n.item(2), n.item(0), n.item(1), n.item(2)]).ravel()
         return J
     
-    def solve(self, baumgarte=0.2, dt=1.0):
+    def solve(self, baumgarte=0.1, dt=1.0):
         p1 = self.obj1.get_position()
         p2 = self.obj2.get_position()
         C = np.linalg.norm(p2-p1) - self.distance
@@ -62,6 +63,7 @@ class DistanceConstraint(Constraint):
         V = np.array([v1.item(0), v1.item(1), v1.item(2), v2.item(0), v2.item(1), v2.item(2)])
         m1 = float(self.obj1.mass)
         m2 = float(self.obj2.mass)
+        b = baumgarte*C/dt
         M =  np.array([[m1, 0, 0, 0, 0, 0],
                       [0, m1, 0, 0, 0, 0],
                       [0, 0, m1, 0, 0, 0],
@@ -76,7 +78,7 @@ class DistanceConstraint(Constraint):
                       [0, 0, 0, 0, 1/m2, 0],
                       [0, 0, 0, 0, 0, 1/m2]])
         
-        lmda = -(1/((J @ np.linalg.inv(M)) @ J.T)) * ((J.T @ V) + baumgarte*C/dt)
+        lmda = -(1/((J @ np.linalg.inv(M)) @ J.T)) * ((J.T @ V) + b)
         impulse = J.T * lmda
         V = V + Minv @ impulse
         newv1 = V[0:3]
@@ -95,3 +97,42 @@ class DistanceConstraint(Constraint):
         else:
             new_p2 = np.array([p1.item(0)+5, p1.item(1), p1.item(2)])
             self.obj2.set_position(new_p2)
+    
+class StaticPlane(Constraint):
+    def __init__(self, plane_normal=[1.0, 0.0, 0.0], plane_point=[0.0, 0.0, 0.0], scale=50):
+        self.plane_normal = np.array(plane_normal, dtype=float)
+        self.plane_point  = np.array(plane_point, dtype=float)
+        self.scale = scale
+
+    def compute_jacobian(self):
+        return self.plane_normal
+    
+    def solve(self, baumgarte=0.1, dt=1):
+        p = self.obj.get_position()
+        v = self.obj.get_velocity()
+
+        J = self.compute_jacobian()
+        C = np.dot(self.plane_normal, p - self.plane_point) - self.obj.radius
+        if C < 0:
+            vn = J @ v
+            b = baumgarte * C / dt
+
+            if vn < 0:
+                restitution_bias = self.obj.restitution * vn
+            else:
+                restitution_bias = 0.0
+
+            m = self.obj.mass
+            Minv = np.identity(3) / m
+
+            denom = J @ Minv @ J.T
+
+            lmda = -(vn + restitution_bias + b) / denom
+            lmda = max(0.0, lmda)
+
+            new_v = v + (Minv @ J) * lmda
+            self.obj.set_velocity(new_v)
+            
+    def set_object(self, obj):
+        self.obj = obj
+        
